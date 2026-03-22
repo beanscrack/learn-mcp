@@ -1,5 +1,7 @@
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { getDb } from "./db.js";
+import { toolHandler } from "../utils/mcp.js";
 
 interface Task {
   id: number;
@@ -37,130 +39,94 @@ function formatTask(t: Task) {
   };
 }
 
-export const taskTools = {
-  tasks_list: {
-    description:
-      'List local study tasks. Optionally filter by completion status. Returns id, title, source (manual/d2l), course, dueDate, and completed. Use to answer: "What do I need to do?", "Show my tasks".',
-    schema: {
-      completed: z
-        .boolean()
-        .optional()
-        .describe(
-          "Filter: true for completed tasks, false for incomplete, omit for all."
-        ),
-    },
-    handler: async ({
-      completed,
-    }: {
-      completed?: boolean;
-    }): Promise<string> => {
-      const db = getDb();
-      let query = "SELECT * FROM tasks";
-      if (completed !== undefined) {
-        query += ` WHERE completed = ${completed ? 1 : 0}`;
-      }
-      query +=
-        " ORDER BY CASE WHEN due_date IS NULL THEN 1 ELSE 0 END, due_date ASC, id ASC";
-      const tasks = db.prepare(query).all() as Task[];
-      return JSON.stringify(tasks.map(formatTask), null, 2);
-    },
+// Exported handlers for testing
+export const taskHandlers = {
+  async tasks_list({ completed }: { completed?: boolean }) {
+    const db = getDb();
+    let query = "SELECT * FROM tasks";
+    if (completed !== undefined) {
+      query += ` WHERE completed = ${completed ? 1 : 0}`;
+    }
+    query += " ORDER BY CASE WHEN due_date IS NULL THEN 1 ELSE 0 END, due_date ASC, id ASC";
+    const tasks = db.prepare(query).all() as Task[];
+    return JSON.stringify(tasks.map(formatTask), null, 2);
   },
 
-  tasks_add: {
-    description:
-      "Add a new manual task to the local study list. Returns the created task.",
-    schema: {
-      title: z.string().describe("Task title / description."),
-      dueDate: z
-        .string()
-        .optional()
-        .describe(
-          "Optional due date in ISO 8601 format (e.g. 2025-03-28T23:59:00)."
-        ),
-      course: z.string().optional().describe("Optional course name or code."),
-    },
-    handler: async ({
-      title,
-      dueDate,
-      course,
-    }: {
-      title: string;
-      dueDate?: string;
-      course?: string;
-    }): Promise<string> => {
-      const db = getDb();
-      const result = db
-        .prepare(
-          "INSERT INTO tasks (title, source, course, due_date) VALUES (?, ?, ?, ?)"
-        )
-        .run(title, "manual", course ?? null, dueDate ?? null);
-      return JSON.stringify({
-        id: result.lastInsertRowid,
-        title,
-        created: true,
-      });
-    },
+  async tasks_add({ title, dueDate, course }: { title: string; dueDate?: string; course?: string }) {
+    const db = getDb();
+    const result = db
+      .prepare("INSERT INTO tasks (title, source, course, due_date) VALUES (?, ?, ?, ?)")
+      .run(title, "manual", course ?? null, dueDate ?? null);
+    return JSON.stringify({ id: result.lastInsertRowid, title, created: true }, null, 2);
   },
 
-  tasks_complete: {
-    description:
-      "Mark a task as complete. Pass the task id from tasks_list.",
-    schema: {
-      id: z.number().describe("Task id from tasks_list."),
-    },
-    handler: async ({ id }: { id: number }): Promise<string> => {
-      const db = getDb();
-      const result = db
-        .prepare("UPDATE tasks SET completed = 1 WHERE id = ?")
-        .run(id);
-      if (result.changes === 0) throw new Error(`Task ${id} not found`);
-      return JSON.stringify({ id, completed: true });
-    },
+  async tasks_complete({ id }: { id: number }) {
+    const db = getDb();
+    const result = db.prepare("UPDATE tasks SET completed = 1 WHERE id = ?").run(id);
+    if (result.changes === 0) throw new Error(`Task ${id} not found`);
+    return JSON.stringify({ id, completed: true }, null, 2);
   },
 
-  plan_week: {
-    description:
-      'Get a weekly study plan: overdue items, tasks due in the next 7 days, and tasks with no due date. Use to answer: "What\'s my plan this week?", "What should I focus on?".',
-    schema: {},
-    handler: async (): Promise<string> => {
-      const db = getDb();
-      const now = new Date().toISOString();
-      const weekEnd = new Date(Date.now() + 7 * 86400000).toISOString();
+  async plan_week() {
+    const db = getDb();
+    const now = new Date().toISOString();
+    const weekEnd = new Date(Date.now() + 7 * 86400000).toISOString();
 
-      const overdue = (
-        db
-          .prepare(
-            "SELECT * FROM tasks WHERE completed = 0 AND due_date IS NOT NULL AND due_date < ? ORDER BY due_date ASC"
-          )
-          .all(now) as Task[]
-      ).map(formatTask);
+    const overdue = (db.prepare(
+      "SELECT * FROM tasks WHERE completed = 0 AND due_date IS NOT NULL AND due_date < ? ORDER BY due_date ASC"
+    ).all(now) as Task[]).map(formatTask);
 
-      const thisWeek = (
-        db
-          .prepare(
-            "SELECT * FROM tasks WHERE completed = 0 AND due_date IS NOT NULL AND due_date >= ? AND due_date <= ? ORDER BY due_date ASC"
-          )
-          .all(now, weekEnd) as Task[]
-      ).map(formatTask);
+    const thisWeek = (db.prepare(
+      "SELECT * FROM tasks WHERE completed = 0 AND due_date IS NOT NULL AND due_date >= ? AND due_date <= ? ORDER BY due_date ASC"
+    ).all(now, weekEnd) as Task[]).map(formatTask);
 
-      const noDueDate = (
-        db
-          .prepare(
-            "SELECT * FROM tasks WHERE completed = 0 AND due_date IS NULL ORDER BY id ASC"
-          )
-          .all() as Task[]
-      ).map(formatTask);
+    const noDueDate = (db.prepare(
+      "SELECT * FROM tasks WHERE completed = 0 AND due_date IS NULL ORDER BY id ASC"
+    ).all() as Task[]).map(formatTask);
 
-      return JSON.stringify(
-        {
-          overdue,
-          thisWeek,
-          noDueDate,
-          summary: `${overdue.length} overdue, ${thisWeek.length} due this week, ${noDueDate.length} with no due date`,
-        },
-        null,
-        2
-      );
-    },
-  },
+    return JSON.stringify({
+      overdue,
+      thisWeek,
+      noDueDate,
+      summary: `${overdue.length} overdue, ${thisWeek.length} due this week, ${noDueDate.length} with no due date`,
+    }, null, 2);
+  }
 };
+
+export function registerTasksTools(server: McpServer) {
+  server.tool(
+    "tasks_list",
+    'List local study tasks. Optionally filter by completion status.',
+    {
+      completed: z.boolean().optional().describe("Filter: true for completed, false for incomplete."),
+    },
+    toolHandler("tasks_list", taskHandlers.tasks_list)
+  );
+
+  server.tool(
+    "tasks_add",
+    "Add a new manual task to the local study list.",
+    {
+      title: z.string().describe("Task title."),
+      dueDate: z.string().optional().describe("ISO 8601 due date."),
+      course: z.string().optional().describe("Course name or code."),
+    },
+    toolHandler("tasks_add", taskHandlers.tasks_add)
+  );
+
+  server.tool(
+    "tasks_complete",
+    "Mark a task as complete.",
+    {
+      id: z.number().describe("Task id."),
+    },
+    toolHandler("tasks_complete", taskHandlers.tasks_complete)
+  );
+
+  server.tool(
+    "plan_week",
+    'Get a weekly study plan.',
+    {},
+    toolHandler("plan_week", taskHandlers.plan_week)
+  );
+}

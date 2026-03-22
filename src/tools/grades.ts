@@ -1,6 +1,8 @@
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { client } from "../client.js";
 import { marshalGrades, type RawGrade } from "../utils/marshal.js";
+import { toolHandler } from "../utils/mcp.js";
 
 function requireOrgUnitId(provided?: number): number {
   const id =
@@ -13,21 +15,18 @@ function requireOrgUnitId(provided?: number): number {
   return id;
 }
 
-export const gradeTools = {
-  get_my_grades: {
-    description:
-      "Get your grades for a course. Returns all grade items with scores, percentages, and feedback comments. Use to answer: \"What are my grades?\", \"How did I do on the assignment?\", \"What's my current standing?\"",
-    schema: {
-      orgUnitId: z
-        .number()
-        .optional()
-        .describe("Course org unit ID from get_my_courses. Optional if D2L_COURSE_ID is set."),
+export function registerGradeTools(server: McpServer) {
+  server.tool(
+    "get_my_grades",
+    "Get your grades for a course. Returns scores, percentages, and feedback.",
+    {
+      orgUnitId: z.number().optional().describe("Course org unit ID. Optional if D2L_COURSE_ID is set."),
     },
-    handler: async ({ orgUnitId }: { orgUnitId?: number }): Promise<string> => {
+    toolHandler("get_my_grades", async ({ orgUnitId }) => {
       const grades = (await client.getMyGradeValues(
         requireOrgUnitId(orgUnitId)
       )) as RawGrade[];
       return JSON.stringify(marshalGrades(grades), null, 2);
-    },
-  },
-};
+    })
+  );
+}

@@ -108,7 +108,28 @@ Once connected, you can interact with the server using natural language:
 2. Query specific concepts using `notes_search` to find relevant excerpts across all documents.
 3. Use `notes_suggest_for_item` to automatically find related readings for a given assignment title.
 
-## Technical Details
+## Project Structure
+
+```text
+learn-mcp/
+├── .github/workflows/ci.yml # GitHub Actions (pinned Node.js 20.19.0)
+├── src/
+│   ├── index.ts             # Main entry point (Stdio/HTTP server)
+│   ├── auth.ts              # Playwright-based SSO & Duo authentication
+│   ├── doctor.ts            # Environment and runtime diagnostic tool
+│   ├── study/               # Local SQLite storage and study logic
+│   │   ├── tasks.ts         # Task management and planning
+│   │   ├── notes.ts         # PDF/DOCX indexing and search
+│   │   └── sync.ts          # D2L assignment synchronization
+│   ├── tools/               # D2L feature-specific tool modules
+│   │   ├── assign.ts        # Assignments and submissions
+│   │   ├── grades.ts        # Academic performance
+│   │   ├── calendar.ts      # Deadlines and schedules
+│   │   └── ...              # Other D2L capabilities
+│   └── utils/               # Shared logic and MCP helper utilities
+├── package.json             # Component dependencies and metadata
+└── README.md                # Documentation and usage guide
+```
 
 ### Storage
 - **Sessions**: Cached in `~/.learn-session/`

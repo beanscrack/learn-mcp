@@ -1,8 +1,13 @@
 import "dotenv/config";
-import { chromium, BrowserContext, Page } from "playwright";
-import { homedir } from "os";
-import { join } from "path";
-import { existsSync } from "fs";
+import { chromium, Page, BrowserContext, type Request } from "playwright";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+
+export type SessionInfo = {
+  cookies: any[];
+  origins: any[];
+};
 
 // UWaterloo LEARN base URL and session storage path
 const D2L_HOST = process.env.D2L_BASE_URL
@@ -11,8 +16,16 @@ const D2L_HOST = process.env.D2L_BASE_URL
 const HOME_URL = `https://${D2L_HOST}/d2l/home`;
 const LOGIN_URL = `https://${D2L_HOST}`;
 
-const SESSION_PATH =
-  process.env.SESSION_DIR || join(homedir(), ".learn-session");
+let finalSessionDir: string;
+if (process.env.SESSION_DIR) {
+  finalSessionDir = path.isAbsolute(process.env.SESSION_DIR)
+    ? process.env.SESSION_DIR
+    : path.join(process.cwd(), process.env.SESSION_DIR);
+} else {
+  finalSessionDir = path.join(os.homedir(), ".learn-session");
+}
+export const SESSION_DIR = finalSessionDir;
+export const SESSION_FILE = path.join(SESSION_DIR, "session.json");
 
 // Optional credentials for pre-filling the Shibboleth form.
 // Note: Duo MFA still requires interactive browser — credentials only speed up
@@ -103,7 +116,7 @@ async function captureToken(
   let capturedToken = "";
 
   // Intercept all D2L API requests to sniff the Authorization header
-  page.on("request", (req: any) => {
+  page.on("request", (req: Request) => {
     if (req.url().includes("/d2l/api/")) {
       const auth = req.headers()["authorization"];
       if (auth?.startsWith("Bearer ")) {
@@ -137,7 +150,7 @@ async function captureToken(
 
     // Wait for the user to complete login (including Duo MFA)
     console.error("[AUTH] Waiting for login completion (Duo MFA required)...");
-    await page.waitForURL((url: any) => !isLoginPage(url.toString()), {
+    await page.waitForURL((url: string | URL) => !isLoginPage(url.toString()), {
       timeout: 120000, // 2 minutes for user to complete Duo
     });
     await page.waitForLoadState("networkidle");
@@ -192,17 +205,30 @@ export async function getToken(): Promise<string> {
   }
 
   console.error("[AUTH] Cache miss — refreshing token via Playwright");
-  const hasSession = existsSync(SESSION_PATH);
+  let context: BrowserContext;
+  const hasSession = fs.existsSync(SESSION_FILE);
 
-  // First attempt: headless if we have a cached browser session on disk
-  let context = await chromium.launchPersistentContext(SESSION_PATH, {
-    headless: hasSession,
-    viewport: { width: 1280, height: 720 },
-    userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-      "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-  });
-  console.error(`[AUTH] Browser launched (headless: ${hasSession})`);
+  if (hasSession) {
+    console.error("[AUTH] Found cached session file");
+    context = await chromium.launchPersistentContext(SESSION_DIR, {
+      headless: true,
+      viewport: { width: 1280, height: 720 },
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    });
+    console.error(`[AUTH] Browser launched (headless: true)`);
+  } else {
+    console.error("[AUTH] No cached session found — launching headed for login");
+    context = await chromium.launchPersistentContext(SESSION_DIR, {
+      headless: false,
+      viewport: { width: 1280, height: 720 },
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    });
+    console.error(`[AUTH] Browser launched (headless: false)`);
+  }
 
   try {
     const result = await captureToken(context, hasSession /* quickCheck */);
@@ -211,7 +237,7 @@ export async function getToken(): Promise<string> {
       // Disk session expired — close headless browser and reopen headed for Duo
       await context.close();
       console.error("[AUTH] Disk session expired — relaunching headed for Duo MFA");
-      context = await chromium.launchPersistentContext(SESSION_PATH, {
+      context = await chromium.launchPersistentContext(SESSION_DIR, {
         headless: false,
         viewport: { width: 1280, height: 720 },
         userAgent:
@@ -253,7 +279,7 @@ export function getTokenExpiry(): number {
  */
 export async function getAuthenticatedContext(): Promise<BrowserContext> {
 
-  const context = await chromium.launchPersistentContext(SESSION_PATH, {
+  const context = await chromium.launchPersistentContext(SESSION_DIR, {
     headless: false, // WaterlooWorks blocks headless Chromium
     viewport: { width: 1280, height: 720 },
     userAgent:

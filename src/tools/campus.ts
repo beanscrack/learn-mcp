@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { toolHandler } from "../utils/mcp.js";
 
 const BUILDINGS: Record<string, { name: string; mapUrl: string; description: string }> = {
     MC: {
@@ -46,30 +47,15 @@ export function registerCampusTools(server: McpServer) {
         {
             code: z.string().describe("The building code (e.g., 'MC', 'DC')"),
         },
-        async ({ code }) => {
+        toolHandler("get_building_info", async ({ code }) => {
             const upperCode = code.toUpperCase();
             const building = BUILDINGS[upperCode];
 
             if (!building) {
-                return {
-                    content: [
-                        {
-                            type: "text",
-                            text: `Building code '${code}' not found. Try common codes like MC, DC, E7, SLC, or PAC.`,
-                        },
-                    ],
-                    isError: true,
-                };
+                throw new Error(`Building code '${code}' not found. Try common codes like MC, DC, E7, SLC, or PAC.`);
             }
 
-            return {
-                content: [
-                    {
-                        type: "text",
-                        text: `Building: ${building.name}\nDescription: ${building.description}\nMap: ${building.mapUrl}`,
-                    },
-                ],
-            };
-        }
+            return `Building: ${building.name}\nDescription: ${building.description}\nMap: ${building.mapUrl}`;
+        })
     );
 }
