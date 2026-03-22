@@ -133,23 +133,62 @@
 
 ## Traceability
 
-*Populated during roadmap creation*
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SCAF-01 – SCAF-04 | Phase 1 | Pending |
-| AUTH-01 – AUTH-06 | Phase 2 | Pending |
-| ENRL-01, ASGN-01–03, GRAD-01, CALD-01 | Phase 3 | Pending |
-| CONT-01–04, NEWS-01, FILE-01–03 | Phase 3 | Pending |
-| MCP-01–03 | Phase 2–3 | Pending |
-| STDY-01–10 | Phase 4 | Pending |
-| COOP-01–07, SCRP-01–03 | Phase 5 | Pending |
+| SCAF-01 | Phase 1 | Pending |
+| SCAF-02 | Phase 1 | Pending |
+| SCAF-03 | Phase 1 | Pending |
+| SCAF-04 | Phase 1 | Pending |
+| AUTH-01 | Phase 2 | Pending |
+| AUTH-02 | Phase 2 | Pending |
+| AUTH-03 | Phase 2 | Pending |
+| AUTH-04 | Phase 2 | Pending |
+| AUTH-05 | Phase 2 | Pending |
+| AUTH-06 | Phase 2 | Pending |
+| MCP-01 | Phase 2 | Pending |
+| MCP-02 | Phase 2 | Pending |
+| MCP-03 | Phase 2 | Pending |
+| ENRL-01 | Phase 3 | Pending |
+| ASGN-01 | Phase 3 | Pending |
+| ASGN-02 | Phase 3 | Pending |
+| ASGN-03 | Phase 3 | Pending |
+| GRAD-01 | Phase 3 | Pending |
+| CALD-01 | Phase 3 | Pending |
+| CONT-01 | Phase 3 | Pending |
+| CONT-02 | Phase 3 | Pending |
+| CONT-03 | Phase 3 | Pending |
+| CONT-04 | Phase 3 | Pending |
+| NEWS-01 | Phase 3 | Pending |
+| FILE-01 | Phase 3 | Pending |
+| FILE-02 | Phase 3 | Pending |
+| FILE-03 | Phase 3 | Pending |
+| STDY-01 | Phase 4 | Pending |
+| STDY-02 | Phase 4 | Pending |
+| STDY-03 | Phase 4 | Pending |
+| STDY-04 | Phase 4 | Pending |
+| STDY-05 | Phase 4 | Pending |
+| STDY-06 | Phase 4 | Pending |
+| STDY-07 | Phase 4 | Pending |
+| STDY-08 | Phase 4 | Pending |
+| STDY-09 | Phase 4 | Pending |
+| STDY-10 | Phase 4 | Pending |
+| COOP-01 | Phase 5 | Pending |
+| COOP-02 | Phase 5 | Pending |
+| COOP-03 | Phase 5 | Pending |
+| COOP-04 | Phase 5 | Pending |
+| COOP-05 | Phase 5 | Pending |
+| COOP-06 | Phase 5 | Pending |
+| COOP-07 | Phase 5 | Pending |
+| SCRP-01 | Phase 5 | Pending |
+| SCRP-02 | Phase 5 | Pending |
+| SCRP-03 | Phase 5 | Pending |
 
 **Coverage:**
-- v1 requirements: 41 total
-- Mapped to phases: 41
+- v1 requirements: 47 total
+- Mapped to phases: 47
 - Unmapped: 0 ✓
+- Note: Previous count of 41 was incorrect; actual count is 47 (verified by row enumeration above)
 
 ---
 *Requirements defined: 2026-03-21*
-*Last updated: 2026-03-21 after initial definition*
+*Last updated: 2026-03-21 — traceability populated during roadmap creation*
