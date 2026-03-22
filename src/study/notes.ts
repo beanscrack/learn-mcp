@@ -11,7 +11,7 @@ function expandPath(p: string): string {
   return p.startsWith("~") ? path.join(os.homedir(), p.slice(1)) : p;
 }
 
-function chunkText(text: string): string[] {
+export function chunkText(text: string): string[] {
   const words = text.split(/\s+/).filter(Boolean);
   const chunks: string[] = [];
   for (let i = 0; i < words.length; i += CHUNK_WORDS) {
@@ -28,7 +28,7 @@ const STOP_WORDS = new Set([
   "as", "not", "no", "so", "if", "than", "then", "when", "which", "who",
 ]);
 
-function extractKeywords(text: string): string[] {
+export function extractKeywords(text: string): string[] {
   return text
     .toLowerCase()
     .split(/\W+/)
@@ -36,7 +36,7 @@ function extractKeywords(text: string): string[] {
     .slice(0, 8);
 }
 
-function buildFtsQuery(terms: string[]): string {
+export function buildFtsQuery(terms: string[]): string {
   return terms.map((t) => `${t.replace(/[^a-z0-9]/gi, "")}*`).join(" OR ");
 }
 
@@ -147,10 +147,10 @@ export const noteTools = {
           "SELECT source_file, chunk_index, content FROM note_sections WHERE content MATCH ? ORDER BY rank LIMIT ?"
         )
         .all(ftsQuery, limit) as Array<{
-        source_file: string;
-        chunk_index: number;
-        content: string;
-      }>;
+          source_file: string;
+          chunk_index: number;
+          content: string;
+        }>;
 
       return JSON.stringify(
         rows.map((r) => ({
@@ -198,10 +198,10 @@ export const noteTools = {
           "SELECT source_file, chunk_index, content FROM note_sections WHERE content MATCH ? ORDER BY rank LIMIT ?"
         )
         .all(ftsQuery, limit) as Array<{
-        source_file: string;
-        chunk_index: number;
-        content: string;
-      }>;
+          source_file: string;
+          chunk_index: number;
+          content: string;
+        }>;
 
       return JSON.stringify(
         rows.map((r) => ({

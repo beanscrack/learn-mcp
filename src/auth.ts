@@ -12,7 +12,7 @@ const HOME_URL = `https://${D2L_HOST}/d2l/home`;
 const LOGIN_URL = `https://${D2L_HOST}`;
 
 const SESSION_PATH =
-  process.env.SESSION_DIR || join(homedir(), ".uwlearn-session");
+  process.env.SESSION_DIR || join(homedir(), ".learn-session");
 
 // Optional credentials for pre-filling the Shibboleth form.
 // Note: Duo MFA still requires interactive browser — credentials only speed up
@@ -103,7 +103,7 @@ async function captureToken(
   let capturedToken = "";
 
   // Intercept all D2L API requests to sniff the Authorization header
-  page.on("request", (req) => {
+  page.on("request", (req: any) => {
     if (req.url().includes("/d2l/api/")) {
       const auth = req.headers()["authorization"];
       if (auth?.startsWith("Bearer ")) {
@@ -137,7 +137,7 @@ async function captureToken(
 
     // Wait for the user to complete login (including Duo MFA)
     console.error("[AUTH] Waiting for login completion (Duo MFA required)...");
-    await page.waitForURL((url) => !isLoginPage(url.toString()), {
+    await page.waitForURL((url: URL | string) => !isLoginPage(url.toString()), {
       timeout: 120000, // 2 minutes for user to complete Duo
     });
     await page.waitForLoadState("networkidle");
@@ -169,7 +169,7 @@ async function captureToken(
     }
     throw new Error(
       "Failed to capture Bearer token from D2L API requests. " +
-        "Ensure login completed successfully and the LEARN homepage loaded."
+      "Ensure login completed successfully and the LEARN homepage loaded."
     );
   }
 
@@ -252,7 +252,6 @@ export function getTokenExpiry(): number {
  * Caller is responsible for closing the context when done.
  */
 export async function getAuthenticatedContext(): Promise<BrowserContext> {
-  const hasSession = existsSync(SESSION_PATH);
 
   const context = await chromium.launchPersistentContext(SESSION_PATH, {
     headless: false, // WaterlooWorks blocks headless Chromium
@@ -271,7 +270,7 @@ export async function getAuthenticatedContext(): Promise<BrowserContext> {
     // Session expired — pre-fill and wait for Duo
     await prefillShibbolethForm(page);
     console.error("[AUTH] getAuthenticatedContext: waiting for login (Duo MFA)...");
-    await page.waitForURL((u) => !isLoginPage(u.toString()), {
+    await page.waitForURL((u: URL | string) => !isLoginPage(u.toString()), {
       timeout: 120000,
     });
     await page.waitForLoadState("networkidle");

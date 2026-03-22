@@ -21,6 +21,8 @@ import { taskTools } from "./study/tasks.js";
 import { syncTools } from "./study/sync.js";
 import { noteTools } from "./study/notes.js";
 import { coopTools } from "./tools/coop.js";
+import { registerCampusTools } from "./tools/campus.js";
+import { registerCourseTools } from "./tools/courses.js";
 import { closeContext as closeWwContext } from "./waterloo-works/client.js";
 
 // ─── Tool error formatting (MCP-03) ──────────────────────────────────────────
@@ -77,7 +79,7 @@ function formatToolError(err: unknown): string {
 // ─── Server factory ───────────────────────────────────────────────────────────
 
 function createServer(): McpServer {
-  const server = new McpServer({ name: "uwlearn-mcp", version: "0.1.0" });
+  const server = new McpServer({ name: "learn-mcp", version: "0.1.0" });
 
   // Wraps a handler: logs timing, formats errors as structured JSON
   function wrap<A extends Record<string, unknown>>(
@@ -199,7 +201,7 @@ function createServer(): McpServer {
         .describe("Optional: custom save path (directory or full path). Defaults to ~/Downloads."),
     },
     wrap("download_file", async ({ url, savePath }) => {
-      const result = await downloadFile(url as string, savePath as string | undefined);
+      const result = await downloadFile(url, savePath);
       const kb = (result.size / 1024).toFixed(1);
       let text = `Downloaded: ${result.filename}\nPath: ${result.path}\nSize: ${kb} KB\nType: ${result.contentType}`;
       if (result.content) text += `\n\n--- Content ---\n${result.content}`;
@@ -216,7 +218,7 @@ function createServer(): McpServer {
         .describe("Full path or filename (e.g., lecture-slides.pdf)."),
     },
     wrap("read_file", async ({ filePath }) => {
-      const result = await readFile(filePath as string);
+      const result = await readFile(filePath);
       const kb = (result.size / 1024).toFixed(1);
       let text = `File: ${result.filename}\nPath: ${result.path}\nSize: ${kb} KB\nType: ${result.contentType}`;
       if (result.content) text += `\n\n--- Content ---\n${result.content}`;
@@ -234,7 +236,7 @@ function createServer(): McpServer {
         .describe("Full path or filename to delete."),
     },
     wrap("delete_file", async ({ filePath }) => {
-      const result = deleteFile(filePath as string);
+      const result = deleteFile(filePath);
       return `Deleted: ${result.filename}\nPath: ${result.path}`;
     })
   );
@@ -333,6 +335,9 @@ function createServer(): McpServer {
     wrap("get_saved_jobs", coopTools.get_saved_jobs.handler)
   );
 
+  registerCampusTools(server);
+  registerCourseTools(server);
+
   return server;
 }
 
@@ -342,10 +347,10 @@ async function runStdio(): Promise<void> {
   const server = createServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("[uwlearn-mcp] Running on stdio");
+  console.error("[learn-mcp] Running on stdio");
 
   async function shutdown() {
-    try { await closeWwContext(); } catch {}
+    try { await closeWwContext(); } catch { }
     process.exit(0);
   }
   process.on("SIGINT", shutdown);
@@ -359,7 +364,7 @@ async function runHttp(port: number): Promise<void> {
   app.use(express.json());
   app.use(cors({ origin: "*", exposedHeaders: ["Mcp-Session-Id"] }));
 
-  app.use("/mcp", (req, _res, next) => {
+  app.use("/mcp", (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     const accept = req.headers["accept"] || "";
     if (!accept.includes("text/event-stream")) {
       req.headers["accept"] = accept
@@ -386,12 +391,12 @@ async function runHttp(port: number): Promise<void> {
   async function saveSessions() {
     try {
       await fs.writeFile(SESSION_FILE, JSON.stringify([...validSessionIds], null, 2));
-    } catch {}
+    } catch { }
   }
 
   await loadSessions();
 
-  app.post("/mcp", async (req, res) => {
+  app.post("/mcp", async (req: express.Request, res: express.Response) => {
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
     try {
       let transport: StreamableHTTPServerTransport;
@@ -401,8 +406,8 @@ async function runHttp(port: number): Promise<void> {
       } else if (sessionId && validSessionIds.has(sessionId)) {
         transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => sessionId,
-          onsessioninitialized: (sid) => { transports[sid] = transport; },
-          onsessionclosed: (sid) => {
+          onsessioninitialized: (sid: string) => { transports[sid] = transport; },
+          onsessionclosed: (sid: string) => {
             delete transports[sid];
             validSessionIds.delete(sid);
             void saveSessions();
@@ -421,13 +426,13 @@ async function runHttp(port: number): Promise<void> {
       } else if (!sessionId && isInitializeRequest(req.body)) {
         transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
-          onsessioninitialized: (sid) => {
+          onsessioninitialized: (sid: string) => {
             console.error(`[MCP] Session initialized: ${sid}`);
             transports[sid] = transport;
             validSessionIds.add(sid);
             void saveSessions();
           },
-          onsessionclosed: (sid) => {
+          onsessionclosed: (sid: string) => {
             delete transports[sid];
             validSessionIds.delete(sid);
             void saveSessions();
@@ -461,7 +466,7 @@ async function runHttp(port: number): Promise<void> {
     }
   });
 
-  app.get("/mcp", async (req, res) => {
+  app.get("/mcp", async (req: express.Request, res: express.Response) => {
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
     if (!sessionId || !transports[sessionId]) {
       res.status(400).send("Invalid or missing session ID");
@@ -470,7 +475,7 @@ async function runHttp(port: number): Promise<void> {
     await transports[sessionId].handleRequest(req, res);
   });
 
-  app.delete("/mcp", async (req, res) => {
+  app.delete("/mcp", async (req: express.Request, res: express.Response) => {
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
     if (!sessionId || !transports[sessionId]) {
       res.status(400).send("Invalid or missing session ID");
@@ -479,20 +484,21 @@ async function runHttp(port: number): Promise<void> {
     try {
       await transports[sessionId].handleRequest(req, res);
     } catch (err) {
+      console.error("[MCP] DELETE error:", err);
       if (!res.headersSent) res.status(500).send("Error terminating session");
     }
   });
 
   app.listen(port, () => {
-    console.error(`[uwlearn-mcp] HTTP — http://localhost:${port}/mcp`);
+    console.error(`[learn-mcp] HTTP — http://localhost:${port}/mcp`);
   });
 
   async function shutdown() {
     for (const sid of Object.keys(transports)) {
-      try { await transports[sid].close(); } catch {}
+      try { await transports[sid].close(); } catch { }
       delete transports[sid];
     }
-    try { await closeWwContext(); } catch {}
+    try { await closeWwContext(); } catch { }
     process.exit(0);
   }
 
@@ -509,12 +515,12 @@ async function main(): Promise<void> {
   } else if (transport === "http" || transport === "https") {
     await runHttp(process.env.PORT ? parseInt(process.env.PORT, 10) : 3000);
   } else {
-    console.error(`[uwlearn-mcp] Unknown MCP_TRANSPORT "${transport}". Use "stdio" or "http".`);
+    console.error(`[learn-mcp] Unknown MCP_TRANSPORT "${transport}". Use "stdio" or "http".`);
     process.exit(1);
   }
 }
 
 main().catch((err) => {
-  console.error("[uwlearn-mcp] Fatal error:", err);
+  console.error("[learn-mcp] Fatal error:", err);
   process.exit(1);
 });
