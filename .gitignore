@@ -1,0 +1,30 @@
+# Build output
+dist/
+
+.planning/
+ecc/
+
+# Dependencies
+node_modules/
+
+# Environment variables (never commit secrets)
+.env
+
+# Playwright browser session cache — lives outside the repo at ~/.uwlearn-session/
+# (documented here so it's clear this path must not be committed if SESSION_DIR is changed)
+
+# Local SQLite database
+*.db
+*.db-shm
+*.db-wal
+
+# Source maps
+*.js.map
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo

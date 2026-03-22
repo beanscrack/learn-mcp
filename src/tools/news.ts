@@ -1,0 +1,33 @@
+import { z } from "zod";
+import { client } from "../client.js";
+import { marshalAnnouncements, type RawAnnouncement } from "../utils/marshal.js";
+
+function requireOrgUnitId(provided?: number): number {
+  const id =
+    provided ??
+    (process.env.D2L_COURSE_ID ? parseInt(process.env.D2L_COURSE_ID) : undefined);
+  if (!id)
+    throw new Error(
+      "orgUnitId is required. Provide it or set D2L_COURSE_ID in .env"
+    );
+  return id;
+}
+
+export const newsTools = {
+  get_announcements: {
+    description:
+      "Get course announcements from instructors. Returns title, body, date, and attachments. Use to answer: \"Any new announcements?\", \"What did the professor post?\", \"Are there any updates?\"",
+    schema: {
+      orgUnitId: z
+        .number()
+        .optional()
+        .describe("Course org unit ID from get_my_courses. Optional if D2L_COURSE_ID is set."),
+    },
+    handler: async ({ orgUnitId }: { orgUnitId?: number }): Promise<string> => {
+      const news = (await client.getNews(
+        requireOrgUnitId(orgUnitId)
+      )) as RawAnnouncement[];
+      return JSON.stringify(marshalAnnouncements(news), null, 2);
+    },
+  },
+};
