@@ -1,7 +1,16 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { chunkText, extractKeywords, buildFtsQuery } from './notes.js';
+import { closeDb } from './db.js';
 
-describe('note utils', () => {
+describe('Note Utils', () => {
+    beforeEach(() => {
+        closeDb();
+    });
+
+    afterEach(() => {
+        closeDb();
+    });
+
     describe('chunkText', () => {
         it('should split text into chunks of roughly 400 words', () => {
             const words = Array(1000).fill('word').join(' ');

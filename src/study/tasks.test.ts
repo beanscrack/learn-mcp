@@ -1,12 +1,12 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { taskTools } from './tasks.js';
-import { getDb } from './db.js';
+import { getDb, closeDb } from './db.js';
 
-// Set NODE_ENV to test to use in-memory DB
-process.env.NODE_ENV = 'test';
 
 describe('taskTools', () => {
     beforeEach(() => {
+        // Ensure we start with a fresh in-memory DB for every test
+        closeDb();
         // Reset database for each test
         const db = getDb();
         db.exec('DELETE FROM tasks');

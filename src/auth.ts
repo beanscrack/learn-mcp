@@ -137,7 +137,7 @@ async function captureToken(
 
     // Wait for the user to complete login (including Duo MFA)
     console.error("[AUTH] Waiting for login completion (Duo MFA required)...");
-    await page.waitForURL((url: URL | string) => !isLoginPage(url.toString()), {
+    await page.waitForURL((url: any) => !isLoginPage(url.toString()), {
       timeout: 120000, // 2 minutes for user to complete Duo
     });
     await page.waitForLoadState("networkidle");

@@ -67,7 +67,7 @@ Model Context Protocol (MCP) server for University of Waterloo LEARN (D2L Bright
 
 ### Claude Desktop
 
-Add the following to your configuration file:
+Add the following to your configuration file (the key `"learn-mcp"` can be any stable identifier you prefer, such as `"uwlearn"`):
 - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 

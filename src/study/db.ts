@@ -3,8 +3,14 @@ import * as path from "path";
 import * as os from "os";
 import * as fs from "fs";
 
-const DB_DIR = path.join(os.homedir(), ".learn-mcp");
-export const DB_PATH = path.join(DB_DIR, "uwlearn.db");
+export function getDbPath(): string {
+  if (process.env.DB_PATH) {
+    return path.isAbsolute(process.env.DB_PATH)
+      ? process.env.DB_PATH
+      : path.join(process.cwd(), process.env.DB_PATH);
+  }
+  return path.join(os.homedir(), ".learn-mcp", "uwlearn.db");
+}
 
 let _db: Database.Database | null = null;
 
@@ -12,12 +18,14 @@ export function getDb(): Database.Database {
   if (_db) return _db;
 
   const isTest = process.env.NODE_ENV === "test";
+  const dbPath = getDbPath();
+  const dbDir = path.dirname(dbPath);
 
   if (!isTest) {
-    fs.mkdirSync(DB_DIR, { recursive: true });
+    fs.mkdirSync(dbDir, { recursive: true });
   }
 
-  _db = new Database(isTest ? ":memory:" : DB_PATH);
+  _db = new Database(isTest ? ":memory:" : dbPath);
   _db.pragma("journal_mode = WAL");
   _db.pragma("foreign_keys = ON");
 
@@ -42,4 +50,11 @@ export function getDb(): Database.Database {
   `);
 
   return _db;
+}
+
+export function closeDb(): void {
+  if (_db) {
+    _db.close();
+    _db = null;
+  }
 }

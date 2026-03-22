@@ -3,8 +3,8 @@ import { z } from "zod";
 
 export function registerCourseTools(server: McpServer) {
     server.tool(
-        "search_course_catalog",
-        "Search the UWaterloo course catalog (static search for common courses)",
+        "get_course_catalog_info",
+        "Provide static information and links to the official UWaterloo course catalog.",
         {
             query: z.string().describe("Search term (e.g., 'CS 135', 'algorithms')"),
         },

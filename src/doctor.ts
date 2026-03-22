@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { getDbPath } from './study/db.js';
 
 async function doctor() {
     console.error("🏥 learn-mcp Doctor - Sanity Check\n");
@@ -32,11 +33,11 @@ async function doctor() {
 
     // 4. Paths
     const sessionDir = process.env.SESSION_DIR || join(homedir(), ".learn-session");
-    const dbDir = process.env.DB_PATH ? join(process.cwd(), process.env.DB_PATH) : join(homedir(), ".learn-mcp");
+    const dbPath = getDbPath();
 
     console.error(`\n📂 Paths:`);
     console.error(`   Session Dir: ${sessionDir}`);
-    console.error(`   Database Path: ${dbDir}`);
+    console.error(`   Database Path: ${dbPath}`);
 
     console.error("\nDone.");
 }
