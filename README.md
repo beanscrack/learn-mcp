@@ -6,7 +6,7 @@ Model Context Protocol (MCP) server for University of Waterloo LEARN (D2L Bright
 
 | Category | Description | Tools |
 |----------|-------------|-------|
-| courses | Enrollment and catalog information | `get_my_courses`, `search_course_catalog` |
+| courses | Enrollment and catalog information | `get_my_courses`, `get_course_catalog_info` |
 | assignments | Detail retrieval and submissions | `get_assignments`, `get_assignment`, `get_assignment_submissions` |
 | grades | Academic performance tracking | `get_my_grades` |
 | schedules | Deadlines and interviews | `get_upcoming_due_dates`, `get_interview_schedule` |
