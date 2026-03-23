@@ -44,7 +44,7 @@ async function main(): Promise<void> {
 
     console.log("");
     console.log("✓ Authentication successful!");
-    console.log(`  Session cached at: ${process.env.SESSION_DIR || "~/.uwlearn-session"}`);
+    console.log(`  Session cached at: ${process.env.SESSION_DIR || "~/.learn-session"}`);
     console.log(`  Token expires at:  ${expiry.toLocaleString()}`);
     console.log(`  Token preview:     ${token.substring(0, 40)}...`);
     console.log("");

@@ -25,7 +25,7 @@ if (process.env.SESSION_DIR) {
   finalSessionDir = path.join(os.homedir(), ".learn-session");
 }
 export const SESSION_DIR = finalSessionDir;
-export const SESSION_FILE = path.join(SESSION_DIR, "session.json");
+export const STORAGE_STATE_FILE = path.join(SESSION_DIR, "session.json");
 
 // Optional credentials for pre-filling the Shibboleth form.
 // Note: Duo MFA still requires interactive browser — credentials only speed up
@@ -99,17 +99,19 @@ async function prefillShibbolethForm(page: Page): Promise<void> {
 }
 
 /**
- * Write a marker file to SESSION_DIR with the browser context's storage state.
- * This allows future launches to detect an existing session and start headless.
+ * Persist the browser context's storage state (cookies + origins) to disk.
+ * This is written for debugging and potential future use with non-persistent
+ * contexts. The persistent Chromium profile in SESSION_DIR is the primary
+ * session store — this file does NOT gate headless/headed behaviour.
  */
-async function writeSessionMarker(context: BrowserContext): Promise<void> {
+async function writeStorageState(context: BrowserContext): Promise<void> {
   try {
     const state = await context.storageState() as SessionInfo;
     fs.mkdirSync(SESSION_DIR, { recursive: true });
-    fs.writeFileSync(SESSION_FILE, JSON.stringify(state, null, 2));
-    console.error("[AUTH] Session marker written to", SESSION_FILE);
+    fs.writeFileSync(STORAGE_STATE_FILE, JSON.stringify(state, null, 2));
+    console.error("[AUTH] Storage state written to", STORAGE_STATE_FILE);
   } catch (err) {
-    console.error("[AUTH] Warning: could not write session marker:", err);
+    console.error("[AUTH] Warning: could not write storage state:", err);
   }
 }
 
@@ -201,8 +203,8 @@ async function captureToken(
     );
   }
 
-  // Persist the session marker so future launches can start headless
-  await writeSessionMarker(context);
+  // Persist storage state for debugging / future non-persistent context use
+  await writeStorageState(context);
 
   console.error(`[AUTH] Token capture complete (+${Date.now() - start}ms)`);
   return { token: capturedToken, needsLogin: false };
@@ -224,10 +226,10 @@ export async function getToken(): Promise<string> {
 
   console.error("[AUTH] Cache miss — refreshing token via Playwright");
   let context: BrowserContext;
-  const hasSession = fs.existsSync(SESSION_DIR) && fs.existsSync(SESSION_FILE);
+  const hasSession = fs.existsSync(SESSION_DIR);
 
   if (hasSession) {
-    console.error("[AUTH] Found cached session directory + marker file");
+    console.error("[AUTH] Found cached session directory");
     context = await chromium.launchPersistentContext(SESSION_DIR, {
       headless: true,
       viewport: { width: 1280, height: 720 },
