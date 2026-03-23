@@ -25,7 +25,7 @@ if (process.env.SESSION_DIR) {
   finalSessionDir = path.join(os.homedir(), ".learn-session");
 }
 export const SESSION_DIR = finalSessionDir;
-export const STORAGE_STATE_FILE = path.join(SESSION_DIR, "session.json");
+export const STORAGE_STATE_FILE = path.join(SESSION_DIR, "storage-state.json");
 
 // Optional credentials for pre-filling the Shibboleth form.
 // Note: Duo MFA still requires interactive browser — credentials only speed up

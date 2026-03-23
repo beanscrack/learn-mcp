@@ -46,7 +46,9 @@ async function main(): Promise<void> {
     console.log("✓ Authentication successful!");
     console.log(`  Session cached at: ${process.env.SESSION_DIR || "~/.learn-session"}`);
     console.log(`  Token expires at:  ${expiry.toLocaleString()}`);
-    console.log(`  Token preview:     ${token.substring(0, 40)}...`);
+    if (process.env.DEBUG) {
+      console.log(`  Token preview:     ${token.substring(0, 8)}…`);
+    }
     console.log("");
     console.log("The MCP server will reuse this session automatically.");
     console.log("Run 'npm start' to start the server.");

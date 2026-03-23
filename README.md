@@ -61,7 +61,7 @@ Model Context Protocol (MCP) server for University of Waterloo LEARN (D2L Bright
    ```bash
    npm run auth
    ```
-   This will open a browser for UWaterloo SSO and Duo MFA. Sessions typically remain valid for roughly 22 hours, though the exact lifetime is controlled by D2L and may change.
+   This will open a browser for UWaterloo SSO and Duo MFA. Sessions typically remain valid for roughly 22 hours, though the exact lifetime is controlled by D2L and may change. If you encounter a login prompt while using the server, rerun `npm run auth`.
 
 ## Client Integration
 
