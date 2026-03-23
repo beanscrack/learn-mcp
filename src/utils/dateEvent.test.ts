@@ -11,13 +11,13 @@ describe('dateEvent utils', () => {
 
         it('should classify "Midterm" as high confidence EXAM', () => {
             const result = classifyDateEvent('Midterm Exam');
-            expect(result.dateType).toBe('exam'); // Using string for DateType.EXAM
+            expect(result.dateType).toBe(DateType.EXAM);
             expect(result.confidence).toBe(Confidence.HIGH);
         });
 
         it('should classify "Lecture" as high confidence LECTURE', () => {
             const result = classifyDateEvent('CS 341 Lecture');
-            expect(result.dateType).toBe('lecture');
+            expect(result.dateType).toBe(DateType.LECTURE);
             expect(result.confidence).toBe(Confidence.HIGH);
         });
 

@@ -4,10 +4,10 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
-export type SessionInfo = {
+export interface SessionInfo {
   cookies: any[];
   origins: any[];
-};
+}
 
 // UWaterloo LEARN base URL and session storage path
 const D2L_HOST = process.env.D2L_BASE_URL
@@ -99,6 +99,21 @@ async function prefillShibbolethForm(page: Page): Promise<void> {
 }
 
 /**
+ * Write a marker file to SESSION_DIR with the browser context's storage state.
+ * This allows future launches to detect an existing session and start headless.
+ */
+async function writeSessionMarker(context: BrowserContext): Promise<void> {
+  try {
+    const state = await context.storageState() as SessionInfo;
+    fs.mkdirSync(SESSION_DIR, { recursive: true });
+    fs.writeFileSync(SESSION_FILE, JSON.stringify(state, null, 2));
+    console.error("[AUTH] Session marker written to", SESSION_FILE);
+  } catch (err) {
+    console.error("[AUTH] Warning: could not write session marker:", err);
+  }
+}
+
+/**
  * Open a page, navigate to LEARN, handle the Shibboleth SSO redirect,
  * and capture the Bearer token from a D2L API request.
  *
@@ -186,6 +201,9 @@ async function captureToken(
     );
   }
 
+  // Persist the session marker so future launches can start headless
+  await writeSessionMarker(context);
+
   console.error(`[AUTH] Token capture complete (+${Date.now() - start}ms)`);
   return { token: capturedToken, needsLogin: false };
 }
@@ -206,10 +224,10 @@ export async function getToken(): Promise<string> {
 
   console.error("[AUTH] Cache miss — refreshing token via Playwright");
   let context: BrowserContext;
-  const hasSession = fs.existsSync(SESSION_FILE);
+  const hasSession = fs.existsSync(SESSION_DIR) && fs.existsSync(SESSION_FILE);
 
   if (hasSession) {
-    console.error("[AUTH] Found cached session file");
+    console.error("[AUTH] Found cached session directory + marker file");
     context = await chromium.launchPersistentContext(SESSION_DIR, {
       headless: true,
       viewport: { width: 1280, height: 720 },

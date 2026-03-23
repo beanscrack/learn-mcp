@@ -5,7 +5,7 @@ import { toolHandler } from "../utils/mcp.js";
 export function registerCourseTools(server: McpServer) {
     server.tool(
         "get_course_catalog_info",
-        "Provide static information and links to the official UWaterloo course catalog.",
+        "Returns a direct link to the official UWaterloo undergraduate course catalog. Does NOT perform a live search — use the returned URL to look up courses manually.",
         {
             query: z.string().describe("Search term (e.g., 'CS 135', 'algorithms')"),
         },

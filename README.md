@@ -6,7 +6,7 @@ Model Context Protocol (MCP) server for University of Waterloo LEARN (D2L Bright
 
 | Category | Description | Tools |
 |----------|-------------|-------|
-| courses | Enrollment and catalog information | `get_my_courses`, `get_course_catalog_info` |
+| courses | Enrollment info and catalog links | `get_my_courses`, `get_course_catalog_info` |
 | assignments | Detail retrieval and submissions | `get_assignments`, `get_assignment`, `get_assignment_submissions` |
 | grades | Academic performance tracking | `get_my_grades` |
 | schedules | Deadlines and interviews | `get_upcoming_due_dates`, `get_interview_schedule` |
@@ -37,7 +37,7 @@ Model Context Protocol (MCP) server for University of Waterloo LEARN (D2L Bright
    ```bash
    npm install
    ```
-   Note: The installation process includes downloading a headless Chromium instance for authentication and scraping. To skip this, set `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`.
+   Note: By default, Playwright's `postinstall` hook downloads a Chromium binary for authentication and scraping. To skip this (e.g., in CI), set `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` before running `npm install`.
 
 3. Build the project:
    ```bash
@@ -61,7 +61,7 @@ Model Context Protocol (MCP) server for University of Waterloo LEARN (D2L Bright
    ```bash
    npm run auth
    ```
-   This will open a browser for UWaterloo SSO and Duo MFA. Sessions typically remain valid for 22 hours.
+   This will open a browser for UWaterloo SSO and Duo MFA. Sessions typically remain valid for roughly 22 hours, though the exact lifetime is controlled by D2L and may change.
 
 ## Client Integration
 
