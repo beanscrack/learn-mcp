@@ -36,7 +36,8 @@
     "test": "vitest run",
     "start": "node dist/index.js",
     "auth": "node dist/auth-cli.js",
-    "postinstall": "playwright install chromium",
+    "postinstall": "node -e \"if(!process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD){require('child_process').execSync('npx playwright install chromium',{stdio:'inherit'})}\"",
+    "playwright:install": "playwright install chromium",
     "doctor": "node dist/doctor.js"
   },
   "dependencies": {
