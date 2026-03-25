@@ -1,28 +1,15 @@
 /**
  * WaterlooWorks scraping client.
  *
- * SCRP-01: All CSS selectors are isolated in the SELECTORS and URLS objects
- *          below. When the site changes, only edit those two objects.
- * SCRP-02: Every page.$eval() is wrapped in safeText()/safeAttr().
- *          Selector failures log the selector name and return null — callers
- *          return partial data, never throw.
- * SCRP-03: All page.goto() calls use timeout: 30_000 ms.
- *          All page.waitForSelector() calls use timeout: 10_000 ms.
- *
- * LOW CONFIDENCE NOTICE:
- * CSS selectors and URLs below were inferred from public WaterlooWorks
- * documentation and common SPA patterns. Verify each against the live site
- * before relying on them. Failed selectors are logged with their constant
- * name so you can find and fix them here quickly.
+ * SCRP-01: All CSS selectors are isolated in the SEL and WW_URLS objects.
+ * SCRP-02: Every extraction is wrapped in safeText()/safeAttr() with optional required flag.
+ * SCRP-03: Dynamic header mapping handles table variations.
  */
 
-import { chromium, type BrowserContext, type Page } from "playwright";
-import { homedir } from "os";
-import { join } from "path";
-import { existsSync } from "fs";
+import { chromium, type BrowserContext, type Page, type Locator } from "playwright";
 import { getAuthenticatedContext } from "../auth.js";
 
-// ─── URL configuration (LOW CONFIDENCE — verify against live site) ────────
+// ─── URL configuration ───────────────────────────────────────────────────────
 const WW_BASE = "https://waterlooworks.uwaterloo.ca";
 export const WW_URLS = {
   home:         `${WW_BASE}/myAccount`,
@@ -33,127 +20,214 @@ export const WW_URLS = {
   savedJobs:    `${WW_BASE}/myAccount/co-op/full/co-op/posting/saved`,
 };
 
-// ─── CSS selector configuration (LOW CONFIDENCE — verify against live site) ─
-// Selector names (string keys) are used in log messages so failed selectors
-// are easy to locate in this file. NEVER reference these from tool handlers.
+// ─── CSS selector configuration ───────────────────────────────────────────────
 export const SEL = {
-  // ── Auth redirect detection ───────────────────────────────────────────────
-  loginForm:           'form[action*="login"], input[name="j_username"], #loginForm',
+  // ── Auth & Validation
+  loginForm:           ['form[action*="login"]', 'input[name="j_username"]', '#loginForm', 'text=Sign In'],
+  tableContainer:      '.table-responsive, #postingsTable, .posting-table',
+  detailContainer:     '.job-details, #job-details, .posting-details',
 
-  // ── Job postings table ────────────────────────────────────────────────────
-  postingRow:          'table tbody tr, tr[data-jobid], .posting-row',
-  postingJobId:        '[data-jobid], [data-job-id]',
-  postingTitle:        'td:nth-child(2) a, .job-title a, td.title a',
-  postingOrg:          'td:nth-child(3), .organization, td.org-name',
-  postingDivision:     'td:nth-child(4), .division',
-  postingLocation:     'td:nth-child(5), .location',
-  postingDeadline:     'td:nth-child(6), .deadline, td.app-deadline',
-  postingOpenings:     'td:nth-child(7), .openings',
-  postingJobType:      'td:nth-child(8), .job-type',
+  // ── Common table elements
+  tableHeader:         'thead th, th',
+  tableRow:            'tbody tr:has(td)',
 
-  // ── Job detail page ───────────────────────────────────────────────────────
-  detailTitle:         'h1.job-title, h1, .posting-title h1, [class*="title"] h1',
-  detailOrg:           '.organization-name, .employer-name, [class*="employer"]',
-  detailDivision:      '.division, [class*="division"]',
-  detailLocation:      '.location, [class*="location"]',
-  detailDeadline:      '.application-deadline, .deadline, [class*="deadline"]',
-  detailOpenings:      '.openings, [class*="openings"]',
-  detailJobType:       '.job-type, [class*="job-type"]',
-  detailDescription:   '.job-description, #job-description, [class*="description"]',
-  detailSalary:        '.salary, [class*="salary"], [class*="compensation"]',
-  detailTerm:          '.work-term, .term, [class*="term"]',
+  // ── Job detail page
+  detailTitle:         ['h1.job-title', 'h1:has-text("Job ID")', '.posting-title h1'],
+  detailOrg:           ['.organization-name', '.employer-name'],
+  detailDescription:   ['.job-description', '#job-description', '[class*="description"]'],
 
-  // ── Applications table ────────────────────────────────────────────────────
-  appRow:              'table tbody tr, .application-row',
-  appJobId:            '[data-jobid], [data-job-id]',
-  appTitle:            'td:nth-child(1) a, td:nth-child(2) a, .job-title',
-  appOrg:              'td:nth-child(2), td:nth-child(3), .organization',
-  appStatus:           'td:nth-child(3), td:nth-child(4), .status, .app-status',
-  appDeadline:         'td:nth-child(4), td:nth-child(5), .deadline',
-  appTerm:             'td:nth-child(5), td:nth-child(6), .term',
-
-  // ── Interviews table ──────────────────────────────────────────────────────
-  interviewRow:        'table tbody tr, .interview-row',
-  interviewTitle:      'td:nth-child(1), .job-title',
-  interviewOrg:        'td:nth-child(2), .organization',
-  interviewDate:       'td:nth-child(3), .interview-date, .date',
-  interviewTime:       'td:nth-child(4), .interview-time, .time',
-  interviewLocation:   'td:nth-child(5), .interview-location',
-  interviewType:       'td:nth-child(6), .interview-type, .type',
-  interviewStatus:     'td:nth-child(7), .status',
-
-  // ── Rankings table ────────────────────────────────────────────────────────
-  rankRow:             'table tbody tr, .ranking-row',
-  rankTitle:           'td:nth-child(1), .job-title',
-  rankOrg:             'td:nth-child(2), .organization',
-  rankReceived:        'td:nth-child(3), .rank-received, .your-rank',
-  rankStatus:          'td:nth-child(4), .ranking-status, .status',
-  rankTerm:            'td:nth-child(5), .term',
-
-  // ── Saved jobs table ──────────────────────────────────────────────────────
-  savedRow:            'table tbody tr, .saved-job-row, .watchlist-row',
-  savedJobId:          '[data-jobid], [data-job-id]',
-  savedTitle:          'td:nth-child(1) a, td:nth-child(2) a, .job-title',
-  savedOrg:            'td:nth-child(2), td:nth-child(3), .organization',
-  savedDeadline:       'td:nth-child(3), td:nth-child(4), .deadline',
-  savedTerm:           'td:nth-child(4), td:nth-child(5), .term',
+  // ── Shared markers
+  noResults:           ['text=No results found', 'text=No postings', '.alert-info:has-text("None")'],
 };
 
-// ─── Auth detection ───────────────────────────────────────────────────────────
+/** Header mapping to handle UI variations */
+const HEADER_ALIASES: Record<string, string[]> = {
+  id:           ["id", "job id", "work term id", "posting #"],
+  title:        ["title", "job title", "posting title"],
+  organization: ["organization", "employer", "company"],
+  division:     ["division", "unit"],
+  location:     ["location", "city", "region"],
+  deadline:     ["deadline", "app deadline", "application deadline"],
+  status:       ["status", "application status", "ranking status"],
+  term:         ["term", "work term"],
+  openings:     ["openings", "number of openings"],
+  type:         ["type", "job type"],
+  rank:         ["rank", "your rank", "rank received"],
+  date:         ["date", "interview date"],
+  time:         ["time", "interview time"],
+};
 
-function isAuthPage(url: string): boolean {
-  return (
-    url.includes("idp.uwaterloo.ca") ||
-    url.includes("/d2l/login") ||
-    url.includes("adfs") ||
-    url.includes("sso") ||
-    url.includes("login")
-  );
+// ─── Custom Errors ────────────────────────────────────────────────────────────
+
+export class ScraperError extends Error {
+  constructor(public code: "LOGIN_REQUIRED" | "LAYOUT_CHANGED" | "NOT_FOUND", message: string) {
+    super(message);
+    this.name = "ScraperError";
+  }
 }
 
 // ─── Safe extraction helpers ──────────────────────────────────────────────────
 
+/**
+ * Attempts to extract text using a list of selectors.
+ */
 async function safeText(
-  page: Page,
-  selector: string,
-  selectorName: string,
-  root?: string
+  root: Page | Locator,
+  selectors: string | string[],
+  name: string,
+  options?: { required?: boolean; quiet?: boolean }
 ): Promise<string | null> {
-  try {
-    const locator = root
-      ? page.locator(root).locator(selector).first()
-      : page.locator(selector).first();
-    const text = await locator.textContent({ timeout: 10_000 });
-    return text?.trim() || null;
-  } catch {
-    console.error(`[WW] selector failed: SEL.${selectorName} (${selector})`);
-    return null;
+  const list = Array.isArray(selectors) ? selectors : [selectors];
+  for (const selector of list) {
+    try {
+      const locator = root.locator(selector).first();
+      const text = await locator.textContent({ timeout: 1500 });
+      if (text !== null) return text.trim();
+    } catch {
+      continue;
+    }
+  }
+
+  if (options?.required && !options?.quiet) {
+    console.error(`[WW] REQUIRED field missing: ${name} (tried: ${list.join(", ")})`);
+  }
+  return null;
+}
+
+// ─── Semantic Details Extraction ───
+
+/**
+ * Robustly finds a value based on a label in a detail view (e.g. "Location: Canada")
+ */
+async function findDetailValue(page: Page, label: string): Promise<string | null> {
+  // Constrain search to the detail container if possible
+  const root = page.locator(SEL.detailContainer).first();
+  
+  const strategies = [
+    // strategy 1: dt/dd or label/span pattern within root
+    root.locator(`text=${label} >> xpath=following-sibling::*`).first(),
+    // strategy 2: label with a parent that has a sibling within root
+    root.locator(`text=${label}`).locator("xpath=..").locator("xpath=following-sibling::*").first(),
+    // strategy 3: text within the same container, strictly within details
+    root.locator(`:has-text("${label}")`).first(),
+  ];
+
+  for (const loc of strategies) {
+    try {
+      const text = await loc.textContent({ timeout: 1000 });
+      if (text) {
+        const cleaned = text.replace(new RegExp(`^${label}\\s*[:\\-]?\\s*`, "i"), "").trim();
+        if (cleaned) return cleaned;
+      }
+    } catch { continue; }
+  }
+  return null;
+}
+
+// ─── Page Validation & Column discovery ──────────────────────────────────────
+
+/**
+ * Checks if the current page is an authentication or SSO landing page.
+ */
+export async function isAuthPage(page: Page): Promise<boolean> {
+  const url = page.url();
+  
+  // 1. Domain/URL based checks (Strongest)
+  const authDomains = [
+    "idp.uwaterloo.ca",
+    "adfs.uwaterloo.ca",
+    "microsoftonline.com",
+    "duosecurity.com",
+    "/d2l/login",
+    "shibboleth"
+  ];
+  if (authDomains.some(d => url.includes(d))) return true;
+
+  // 2. Specific form/element checks (High confidence)
+  for (const selector of SEL.loginForm) {
+    if (await page.locator(selector).isVisible().catch(() => false)) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Multi-signal validation to ensure we are on the expected page.
+ */
+async function ensureOnPage(page: Page, pageName: string, options?: {
+  urlPattern?: RegExp;
+  anchorSelector?: string;
+  requiredText?: string;
+}): Promise<void> {
+  // 1. Auth check
+  if (await isAuthPage(page)) {
+    throw new ScraperError("LOGIN_REQUIRED", `Redirected to login while accessing ${pageName}.`);
+  }
+
+  const url = page.url();
+
+  // 2. URL check
+  if (options?.urlPattern && !options.urlPattern.test(url)) {
+    throw new ScraperError("LAYOUT_CHANGED", `Unexpected URL for ${pageName}: ${url}`);
+  }
+
+  // 3. Anchor check
+  if (options?.anchorSelector) {
+    try {
+      await page.waitForSelector(options.anchorSelector, { timeout: 5000 });
+    } catch {
+      // Check for "No results" as a valid empty state
+      for (const marker of SEL.noResults) {
+        if (await page.locator(marker).isVisible()) return;
+      }
+      throw new ScraperError("LAYOUT_CHANGED", `Expected element (${options.anchorSelector}) missing on ${pageName}.`);
+    }
+  }
+
+  // 4. Critical text check
+  if (options?.requiredText) {
+    const textFound = await page.locator(`text=${options.requiredText}`).isVisible();
+    if (!textFound) throw new ScraperError("LAYOUT_CHANGED", `Required text "${options.requiredText}" missing on ${pageName}.`);
   }
 }
 
-async function safeAttr(
-  page: Page,
-  selector: string,
-  attr: string,
-  selectorName: string,
-  root?: string
-): Promise<string | null> {
-  try {
-    const locator = root
-      ? page.locator(root).locator(selector).first()
-      : page.locator(selector).first();
-    const val = await locator.getAttribute(attr, { timeout: 10_000 });
-    return val?.trim() || null;
-  } catch {
-    console.error(`[WW] attr failed: SEL.${selectorName}[${attr}] (${selector})`);
-    return null;
+/**
+ * Normalizes header strings into canonical field names.
+ */
+export function normalizeHeader(raw: string): string | null {
+  const cleaned = raw.toLowerCase().trim();
+  for (const [key, aliases] of Object.entries(HEADER_ALIASES)) {
+    if (aliases.includes(cleaned)) return key;
+    if (aliases.some(a => cleaned.includes(a))) return key; // Partial fallback
   }
+  return null;
+}
+
+/**
+ * Maps table header text to column indices.
+ */
+async function getColumnMap(page: Page | Locator, requiredHeaders: string[]): Promise<Record<string, number>> {
+  const map: Record<string, number> = {};
+  const headerLocators = await page.locator(SEL.tableHeader).all();
+
+  for (let i = 0; i < headerLocators.length; i++) {
+    const rawText = (await headerLocators[i].textContent()) || "";
+    const canonical = normalizeHeader(rawText);
+    if (canonical) map[canonical] = i + 1;
+  }
+
+  // Validation
+  const missing = requiredHeaders.filter(h => !map[h]);
+  if (missing.length === requiredHeaders.length) { // Fail if NO required headers found
+    throw new ScraperError("LAYOUT_CHANGED", `Table layout is unrecognizable. Missing all headers: ${requiredHeaders.join(", ")}`);
+  }
+
+  return map;
 }
 
 // ─── Session management ───────────────────────────────────────────────────────
 
 let _context: BrowserContext | null = null;
-
 async function getContext(): Promise<BrowserContext> {
   if (_context) return _context;
   _context = await getAuthenticatedContext();
@@ -161,26 +235,22 @@ async function getContext(): Promise<BrowserContext> {
 }
 
 async function navigateTo(page: Page, url: string): Promise<void> {
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
-  const currentUrl = page.url();
-  if (isAuthPage(currentUrl)) {
-    console.error("[WW] Auth redirect detected — waiting for SSO to complete...");
-    await page.waitForURL((u) => !isAuthPage(u.toString()), {
-      timeout: 120_000,
-    });
-    await page.waitForLoadState("domcontentloaded", { timeout: 30_000 });
-    console.error(`[WW] SSO complete, now at: ${page.url()}`);
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+  
+  // Wait until we are no longer on an auth page (max 2 mins)
+  const start = Date.now();
+  while (await isAuthPage(page)) {
+    if (Date.now() - start > 120000) {
+      throw new ScraperError("LOGIN_REQUIRED", "Timed out waiting for SSO/Login to complete.");
+    }
+    await page.waitForTimeout(2000);
   }
 }
 
 async function withPage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
   const ctx = await getContext();
   const page = await ctx.newPage();
-  try {
-    return await fn(page);
-  } finally {
-    await page.close();
-  }
+  try { return await fn(page); } finally { await page.close(); }
 }
 
 // ─── Public types ─────────────────────────────────────────────────────────────
@@ -247,104 +317,77 @@ export async function getJobPostings(filters?: {
 }): Promise<JobPosting[]> {
   return withPage(async (page) => {
     await navigateTo(page, WW_URLS.postings);
+    await ensureOnPage(page, "Job Postings", {
+      urlPattern: /posting/,
+      anchorSelector: SEL.tableContainer
+    });
 
-    // Wait for the table to appear; if it doesn't, return empty with a warning
-    try {
-      await page.waitForSelector(SEL.postingRow, { timeout: 10_000 });
-    } catch {
-      console.error("[WW] No posting rows found — table may not have loaded");
-      return [];
-    }
-
-    const rows = await page.locator(SEL.postingRow).all();
+    const colMap = await getColumnMap(page, ["id", "title", "organization"]);
+    const rows = await page.locator(SEL.tableRow).all();
     const results: JobPosting[] = [];
     const limit = filters?.limit ?? 50;
 
     for (const row of rows.slice(0, limit)) {
       const posting: JobPosting = {
-        jobId:        await safeText(page, SEL.postingJobId, "postingJobId") ??
-                      await safeAttr(page, SEL.postingJobId, "data-jobid", "postingJobId"),
-        title:        await row.locator(SEL.postingTitle).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        organization: await row.locator(SEL.postingOrg).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        division:     await row.locator(SEL.postingDivision).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        location:     await row.locator(SEL.postingLocation).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        deadline:     await row.locator(SEL.postingDeadline).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        openings:     await row.locator(SEL.postingOpenings).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        jobType:      await row.locator(SEL.postingJobType).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
+        jobId:        colMap["id"] ? await safeText(row, `td:nth-child(${colMap["id"]})`, "id") : null,
+        title:        colMap["title"] ? await safeText(row, `td:nth-child(${colMap["title"]})`, "title", { required: true }) : null,
+        organization: colMap["organization"] ? await safeText(row, `td:nth-child(${colMap["organization"]})`, "org") : null,
+        division:     colMap["division"] ? await safeText(row, `td:nth-child(${colMap["division"]})`, "division") : null,
+        location:     colMap["location"] ? await safeText(row, `td:nth-child(${colMap["location"]})`, "location") : null,
+        deadline:     colMap["deadline"] ? await safeText(row, `td:nth-child(${colMap["deadline"]})`, "deadline") : null,
+        openings:     colMap["openings"] ? await safeText(row, `td:nth-child(${colMap["openings"]})`, "openings") : null,
+        jobType:      colMap["type"] ? await safeText(row, `td:nth-child(${colMap["type"]})`, "type") : null,
       };
 
-      // Client-side filtering
-      if (filters?.term && !JSON.stringify(posting).toLowerCase().includes(filters.term.toLowerCase())) continue;
-      if (filters?.jobType && posting.jobType && !posting.jobType.toLowerCase().includes(filters.jobType.toLowerCase())) continue;
-      if (filters?.location && posting.location && !posting.location.toLowerCase().includes(filters.location.toLowerCase())) continue;
-
+      if (!posting.title) continue;
       results.push(posting);
     }
-
     return results;
   });
 }
 
 export async function getJobDetails(jobId: string): Promise<JobDetail> {
   return withPage(async (page) => {
-    // Try navigating directly with the job ID appended
     const url = `${WW_URLS.postings}/${jobId}`;
     await navigateTo(page, url);
+    await ensureOnPage(page, "Job Details", { anchorSelector: SEL.detailContainer });
 
     return {
       jobId,
-      title:        await safeText(page, SEL.detailTitle, "detailTitle"),
-      organization: await safeText(page, SEL.detailOrg, "detailOrg"),
-      division:     await safeText(page, SEL.detailDivision, "detailDivision"),
-      location:     await safeText(page, SEL.detailLocation, "detailLocation"),
-      deadline:     await safeText(page, SEL.detailDeadline, "detailDeadline"),
-      openings:     await safeText(page, SEL.detailOpenings, "detailOpenings"),
-      jobType:      await safeText(page, SEL.detailJobType, "detailJobType"),
-      description:  await safeText(page, SEL.detailDescription, "detailDescription"),
-      salary:       await safeText(page, SEL.detailSalary, "detailSalary"),
-      term:         await safeText(page, SEL.detailTerm, "detailTerm"),
+      title:        await safeText(page, SEL.detailTitle, "title", { required: true }),
+      organization: await safeText(page, SEL.detailOrg, "org"),
+      division:     await findDetailValue(page, "Division"),
+      location:     await findDetailValue(page, "Location"),
+      deadline:     await findDetailValue(page, "Deadline"),
+      openings:     await findDetailValue(page, "Openings"),
+      jobType:      await findDetailValue(page, "Type"),
+      description:  await safeText(page, SEL.detailDescription, "desc", { quiet: true }),
+      salary:       await findDetailValue(page, "Salary"),
+      term:         await findDetailValue(page, "Term"),
     };
   });
-}
-
-export async function searchJobs(
-  query: string,
-  filters?: { term?: string; jobType?: string; location?: string; limit?: number }
-): Promise<JobPosting[]> {
-  // Fetch all postings and filter by keyword client-side
-  // WaterlooWorks doesn't expose a public search API
-  const all = await getJobPostings({ ...filters, limit: filters?.limit ?? 200 });
-  const q = query.toLowerCase();
-  return all.filter((p) =>
-    JSON.stringify(p).toLowerCase().includes(q)
-  ).slice(0, filters?.limit ?? 20);
 }
 
 export async function getMyApplications(): Promise<Application[]> {
   return withPage(async (page) => {
     await navigateTo(page, WW_URLS.applications);
+    await ensureOnPage(page, "Applications", { anchorSelector: SEL.tableContainer });
 
-    try {
-      await page.waitForSelector(SEL.appRow, { timeout: 10_000 });
-    } catch {
-      console.error("[WW] No application rows found");
-      return [];
-    }
-
-    const rows = await page.locator(SEL.appRow).all();
+    const colMap = await getColumnMap(page, ["id", "title", "status"]);
+    const rows = await page.locator(SEL.tableRow).all();
     const results: Application[] = [];
 
     for (const row of rows) {
-      results.push({
-        jobId:        await row.locator(SEL.appJobId).first().getAttribute("data-jobid", { timeout: 5_000 }).catch(() => null),
-        title:        await row.locator(SEL.appTitle).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        organization: await row.locator(SEL.appOrg).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        status:       await row.locator(SEL.appStatus).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        deadline:     await row.locator(SEL.appDeadline).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        term:         await row.locator(SEL.appTerm).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-      });
+      const app = {
+        jobId:        colMap["id"] ? await safeText(row, `td:nth-child(${colMap["id"]})`, "id") : null,
+        title:        colMap["title"] ? await safeText(row, `td:nth-child(${colMap["title"]})`, "title", { required: true }) : null,
+        organization: colMap["organization"] ? await safeText(row, `td:nth-child(${colMap["organization"]})`, "org") : null,
+        status:       colMap["status"] ? await safeText(row, `td:nth-child(${colMap["status"]})`, "status", { required: true }) : null,
+        deadline:     colMap["deadline"] ? await safeText(row, `td:nth-child(${colMap["deadline"]})`, "deadline") : null,
+        term:         colMap["term"] ? await safeText(row, `td:nth-child(${colMap["term"]})`, "term") : null,
+      };
+      if (app.title) results.push(app);
     }
-
     return results;
   });
 }
@@ -352,29 +395,24 @@ export async function getMyApplications(): Promise<Application[]> {
 export async function getInterviewSchedule(): Promise<Interview[]> {
   return withPage(async (page) => {
     await navigateTo(page, WW_URLS.interviews);
+    await ensureOnPage(page, "Interviews", { anchorSelector: SEL.tableContainer });
 
-    try {
-      await page.waitForSelector(SEL.interviewRow, { timeout: 10_000 });
-    } catch {
-      console.error("[WW] No interview rows found");
-      return [];
-    }
-
-    const rows = await page.locator(SEL.interviewRow).all();
+    const colMap = await getColumnMap(page, ["title", "organization", "date"]);
+    const rows = await page.locator(SEL.tableRow).all();
     const results: Interview[] = [];
 
     for (const row of rows) {
-      results.push({
-        title:        await row.locator(SEL.interviewTitle).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        organization: await row.locator(SEL.interviewOrg).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        date:         await row.locator(SEL.interviewDate).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        time:         await row.locator(SEL.interviewTime).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        location:     await row.locator(SEL.interviewLocation).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        type:         await row.locator(SEL.interviewType).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        status:       await row.locator(SEL.interviewStatus).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-      });
+      const intv = {
+        title:        colMap["title"] ? await safeText(row, `td:nth-child(${colMap["title"]})`, "title", { required: true }) : null,
+        organization: colMap["organization"] ? await safeText(row, `td:nth-child(${colMap["organization"]})`, "org") : null,
+        date:         colMap["date"] ? await safeText(row, `td:nth-child(${colMap["date"]})`, "date") : null,
+        time:         colMap["time"] ? await safeText(row, `td:nth-child(${colMap["time"]})`, "time") : null,
+        location:     colMap["location"] ? await safeText(row, `td:nth-child(${colMap["location"]})`, "loc") : null,
+        type:         colMap["type"] ? await safeText(row, `td:nth-child(${colMap["type"]})`, "type") : null,
+        status:       colMap["status"] ? await safeText(row, `td:nth-child(${colMap["status"]})`, "status") : null,
+      };
+      if (intv.title) results.push(intv);
     }
-
     return results;
   });
 }
@@ -382,27 +420,22 @@ export async function getInterviewSchedule(): Promise<Interview[]> {
 export async function getRankingStatus(): Promise<Ranking[]> {
   return withPage(async (page) => {
     await navigateTo(page, WW_URLS.rankings);
+    await ensureOnPage(page, "Rankings", { anchorSelector: SEL.tableContainer });
 
-    try {
-      await page.waitForSelector(SEL.rankRow, { timeout: 10_000 });
-    } catch {
-      console.error("[WW] No ranking rows found");
-      return [];
-    }
-
-    const rows = await page.locator(SEL.rankRow).all();
+    const colMap = await getColumnMap(page, ["title", "rank"]);
+    const rows = await page.locator(SEL.tableRow).all();
     const results: Ranking[] = [];
 
     for (const row of rows) {
-      results.push({
-        title:        await row.locator(SEL.rankTitle).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        organization: await row.locator(SEL.rankOrg).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        rankReceived: await row.locator(SEL.rankReceived).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        status:       await row.locator(SEL.rankStatus).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        term:         await row.locator(SEL.rankTerm).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-      });
+      const rank = {
+        title:        colMap["title"] ? await safeText(row, `td:nth-child(${colMap["title"]})`, "title", { required: true }) : null,
+        organization: colMap["organization"] ? await safeText(row, `td:nth-child(${colMap["organization"]})`, "org") : null,
+        rankReceived: colMap["rank"] ? await safeText(row, `td:nth-child(${colMap["rank"]})`, "rank") : null,
+        status:       colMap["status"] ? await safeText(row, `td:nth-child(${colMap["status"]})`, "status") : null,
+        term:         colMap["term"] ? await safeText(row, `td:nth-child(${colMap["term"]})`, "term") : null,
+      };
+      if (rank.title) results.push(rank);
     }
-
     return results;
   });
 }
@@ -410,32 +443,37 @@ export async function getRankingStatus(): Promise<Ranking[]> {
 export async function getSavedJobs(): Promise<SavedJob[]> {
   return withPage(async (page) => {
     await navigateTo(page, WW_URLS.savedJobs);
+    await ensureOnPage(page, "Saved Jobs", { anchorSelector: SEL.tableContainer });
 
-    try {
-      await page.waitForSelector(SEL.savedRow, { timeout: 10_000 });
-    } catch {
-      console.error("[WW] No saved job rows found");
-      return [];
-    }
-
-    const rows = await page.locator(SEL.savedRow).all();
+    const colMap = await getColumnMap(page, ["id", "title"]);
+    const rows = await page.locator(SEL.tableRow).all();
     const results: SavedJob[] = [];
 
     for (const row of rows) {
-      results.push({
-        jobId:        await row.locator(SEL.savedJobId).first().getAttribute("data-jobid", { timeout: 5_000 }).catch(() => null),
-        title:        await row.locator(SEL.savedTitle).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        organization: await row.locator(SEL.savedOrg).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        deadline:     await row.locator(SEL.savedDeadline).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-        term:         await row.locator(SEL.savedTerm).first().textContent({ timeout: 5_000 }).then((t) => t?.trim() ?? null).catch(() => null),
-      });
+      const saved = {
+        jobId:        colMap["id"] ? await safeText(row, `td:nth-child(${colMap["id"]})`, "id") : null,
+        title:        colMap["title"] ? await safeText(row, `td:nth-child(${colMap["title"]})`, "title", { required: true }) : null,
+        organization: colMap["organization"] ? await safeText(row, `td:nth-child(${colMap["organization"]})`, "org") : null,
+        deadline:     colMap["deadline"] ? await safeText(row, `td:nth-child(${colMap["deadline"]})`, "deadline") : null,
+        term:         colMap["term"] ? await safeText(row, `td:nth-child(${colMap["term"]})`, "term") : null,
+      };
+      if (saved.title) results.push(saved);
     }
-
     return results;
   });
 }
 
-/** Release the shared browser context. Called on server shutdown. */
+export async function searchJobs(
+  query: string,
+  filters?: { term?: string; jobType?: string; location?: string; limit?: number }
+): Promise<JobPosting[]> {
+  const all = await getJobPostings({ ...filters, limit: filters?.limit ?? 200 });
+  const q = query.toLowerCase();
+  return all.filter((p) =>
+    JSON.stringify(p).toLowerCase().includes(q)
+  ).slice(0, filters?.limit ?? 20);
+}
+
 export async function closeContext(): Promise<void> {
   if (_context) {
     await _context.close();
